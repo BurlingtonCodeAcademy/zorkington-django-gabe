@@ -1,8 +1,3 @@
-//multiple slices you already have
-//inventory should bring up inventory
-//order that thingy pizza
-//clean up ifs
-
 const readline = require("readline");
 const readlineInterface = readline.createInterface(
   process.stdin,
@@ -17,7 +12,7 @@ function ask(questionText) {
 
 const mainStMessage = `182 Main St. You are standing on Main Street between Church and South Winooski.
   There is a door here. A keypad sits on the handle. On the door is a handwritten sign.`;
-const foyerMessage = `You are in a foyer. Or maybe it's an antechamber. Or a vestibule.
+const foyerMessage = `You head upstairs to the foyer. Or maybe it's an antechamber. Or a vestibule.
   Or an entryway. Or an atrium. Or a narthex. But let's forget all that fancy flatlander vocabulary,
   and just call it a foyer. In Vermont, this is pronounced "FO-ee-yurr".
   A copy of Seven Days lies in a corner. There is a door to a bathroom and a door to the classroom.`;
@@ -37,37 +32,53 @@ let locations = {
   "182 Main St": {
     canChangeTo: ["Foyer", "Mr. Mike's"],
     hasBeen: 1,
-    welcomeMessage: mainStMessage
+    welcomeMessage: mainStMessage,
+    inventory: [],
+    lookAround:
+      "You're on Main Street. You see a door with a keypad, a sign, and the entrance to Mr. Mike's Pizza."
   },
   Foyer: {
     canChangeTo: ["182 Main St", "Classroom", "Bathroom"],
     inventory: ["seven days"],
     hasBeen: 0,
-    welcomeMessage: foyerMessage
+    welcomeMessage: foyerMessage,
+    lookAround:
+      "You're at the top of the stairs. There's a locked bathroom and the classroom up here. If you go outside, you'll be back on Main St."
   },
   Classroom: {
     canChangeTo: ["Foyer"],
     hasBeen: 0,
-    welcomeMessage: classroomMessage
+    welcomeMessage: classroomMessage,
+    inventory: [],
+    lookAround:
+      "You're in the classroom. Burlington Code Academy students are around, and Josh is at the front of the room. The chairs look like they would be nice to sit in..."
   },
   Bathroom: {
     canChangeTo: ["Foyer", "Shower"],
     hasBeen: 0,
-    welcomeMessage: bathroomMessage
+    welcomeMessage: bathroomMessage,
+    inventory: [],
+    lookAround: "You're in the bathroom. You see a toilet, a sink and a shower."
   },
-  Shower: { canChangeTo: ["Bathroom"] },
+  Shower: {
+    canChangeTo: ["Bathroom"],
+    lookAround:
+      "You're in the shower. It has has a handle to turn it on. It's a shower dude..."
+  },
   "Mr. Mike's": {
     canChangeTo: ["182 Main St"],
     inventory: [],
     hasBeen: 0,
-    welcomeMessage: mrMikesMessage
+    welcomeMessage: mrMikesMessage,
+    lookAround:
+      "You're in Mr. Mike's Pizza. You see the the pizza counter in front of you and the exit out Main Street is behind you."
   }
 };
 
 let states = {
   Normal: { canChangeTo: ["ON FIRE!!!", "Hungry", "Full", "Enlightened"] },
   Hungry: { canChangeTo: ["ON FIRE!!!", "Full", "DEAD!", "Enlightened"] },
-  Full: { canChangeTo: ["ON FIRE!!!", "Normal", "Enlightened"] },
+  Full: { canChangeTo: ["ON FIRE!!!", "Normal", "Enlightened", "Hungry"] },
   "ON FIRE!!!": { canChangeTo: ["Normal", "Hungry", "DEAD!", "Enlightened"] },
   Enlightened: { canChangeTo: [] },
   Dead: { canChangeTo: [] }
@@ -80,11 +91,14 @@ let inventory = [];
 let theifStatus = 0;
 let bladderStatus = 1;
 let showerStatus = 0;
-let hungryTurnsLeft = 8;
+let hungryTurnsLeft = 7;
+let previousRoom = null;
+let classTaken = 0;
 
 function enterRoom(newRoom) {
   let validTransitions = locations[currentLocation].canChangeTo;
   if (validTransitions.includes(newRoom)) {
+    previousRoom = currentLocation;
     currentLocation = newRoom;
   } else {
     throw "Invalid location transition attempted - from " +
@@ -113,6 +127,9 @@ function drop(item, invent = inventory) {
       break;
     }
   }
+  if (invent === inventory) {
+    locations[currentLocation].inventory.push(item);
+  }
 }
 
 function fancify(words) {
@@ -139,7 +156,8 @@ function simplifyString(string) {
     if (
       stringArray1[wordIndex] === "the" ||
       stringArray1[wordIndex] === "in" ||
-      stringArray1[wordIndex] === "into"
+      stringArray1[wordIndex] === "into" ||
+      stringArray1[wordIndex] === "a"
     ) {
       stringArray1 = stringArray1.splice(wordIndex, 1);
     }
@@ -164,17 +182,35 @@ function respond(answer) {
       console.log("You are carrying:\n" + fancyInventory.join(", "));
     }
     turnTaken = 0;
+  } else if (simplifyString(answer) === "look around") {
+    console.log(locations[currentLocation].lookAround);
+    turnTaken = 0;
   } else if (simplifyString(answer).startsWith("drop")) {
     let item = answer.slice(5);
+    console.log(item);
     if (inventory.includes(item)) {
       drop(item);
-      locations[currentLocation].inventory.push(item);
       console.log("You dropped " + fancify(item) + ".");
     } else {
       console.log("You can't drop something you don't have.");
     }
+  } else if (simplifyString(answer).startsWith("pick up")) {
+    let item = answer.slice(8);
+    if (locations[currentLocation].inventory.includes(item)) {
+      drop(item, locations[currentLocation].inventory);
+      inventory.push(item);
+      console.log("You picked up " + fancify(item) + ".");
+    } else {
+      console.log("There isn't any " + answer + "to pick up.");
+      turnTaken = 0;
+    }
   } else if (simplifyString(answer) === "eat pizza") {
-    if (currentLocation === "Shower" && showerStatus === 1) {
+    if (inventory.includes("pizza") === false) {
+      console.log(
+        "You'd love to eat some pizza, but you don't have any right now."
+      );
+      turnTaken = 0;
+    } else if (currentLocation === "Shower" && showerStatus === 1) {
       if (currentState !== "Full") {
         enterState("Full");
       }
@@ -186,6 +222,7 @@ function respond(answer) {
       enterState("Full");
       console.log("Ahhh, that 'za was delicious. You are now full.");
       drop("pizza");
+      locations[currentLocation].inventory.pop();
     } else if (currentState === "Full") {
       console.log(
         "You eat the pizza even though you're already full. The wife won't be happy about this."
@@ -230,11 +267,22 @@ function respond(answer) {
   ) {
     console.log("You are " + currentState + " with " + hp + " health points.");
     turnTaken = 0;
+  } else if (simplifyString(answer) === "go back") {
+    enterRoom(previousRoom);
+    console.log(
+      "You turn around and go back. Your location is now: " + currentLocation
+    );
   } else if (currentLocation === "182 Main St") {
     if (
-      (simplifyString(answer) === "read sign" ||
-        simplifyString(answer) === "look at sign") &&
-      currentLocation === "182 Main St"
+      simplifyString(answer) === "enter mr mikes" ||
+      simplifyString(answer) === "go mr mikes"
+    ) {
+      enterRoom("Mr. Mike's");
+      console.log("You head into Mr. Mike's Pizza.");
+    } else if (
+      simplifyString(answer) === "read sign" ||
+      simplifyString(answer) === "look at sign" ||
+      simplifyString(answer) === "examine sign"
     ) {
       console.log(
         'The sign says "Welcome to Burlington Code Academy! Come on up to the third floor. If the door is locked, use the code 12345.'
@@ -249,7 +297,8 @@ function respond(answer) {
       let theifStatus = 1;
     } else if (
       simplifyString(answer) === "open door" ||
-      simplifyString(answer) === "enter foyer"
+      simplifyString(answer) === "enter foyer" ||
+      simplifyString(answer) === "go door"
     ) {
       console.log("The door is locked. There is a keypad on the door handle.");
     } else if (
@@ -275,39 +324,41 @@ function respond(answer) {
       console.log(
         "Success! The door opens. You enter the foyer and the door shuts behind you..."
       );
-    } else if (
-      simplifyString(answer) === "enter mr mikes" ||
-      simplifyString(answer) === "go mr mikes"
-    ) {
-      enterRoom("Mr. Mike's");
-      console.log("You head into Mr. Mike's Pizza.");
-      if (
-        simplifyString(answer).includes("eat pizza") &&
-        inventory.excludes("pizza")
-      ) {
-        console.log("You don't have any pizza to eat.");
-        turnTaken = 0;
-      }
     } else {
-      console.log("Sorry, I don't know how to " + answer + ".");
+      console.log("Sorry, I don't know how to \"" + answer + '".');
       turnTaken = 0;
     }
   } else if (currentLocation === "Foyer") {
     if (
+      (simplifyString(answer).includes("enter code") ||
+        simplifyString(answer).includes("key")) &&
+      answer.includes("0202") === false
+    ) {
+      console.log("Bzzzzzt! The bathroom door is still locked.");
+    } else if (
+      simplifyString(answer) === "enter code 0202" ||
+      simplifyString(answer) === "key 0202"
+    ) {
+      enterRoom("Bathroom");
+      console.log(
+        "Success! The door opens. You enter the bathroom, shut the door, and lock it."
+      );
+    } else if (
       simplifyString(answer) === "take paper" ||
       simplifyString(answer) === "take seven days"
     ) {
       inventory.push("seven days");
       drop("seven days", locations[currentLocation].inventory);
+      locations[currentLocation].inventory.pop();
       console.log(
         `You pick up the paper and leaf through it looking for comics and ignoring the articles, just like everybody else does.`
       );
     } else if (
       simplifyString(answer) === "enter bathroom" ||
-      simplifyString(answer) === "go bathroom"
+      simplifyString(answer) === "go bathroom" ||
+      simplifyString(answer) === "open bathroom"
     ) {
-      enterRoom("Bathroom");
-      console.log("You enter the bathroom.");
+      console.log("The bathroom door is locked. It has a keypad on it.");
     } else if (
       simplifyString(answer) === "enter classroom" ||
       simplifyString(answer) === "go classroom"
@@ -323,19 +374,28 @@ function respond(answer) {
       }
     } else if (
       simplifyString(answer).includes("leave") ||
+      simplifyString(answer).includes("exit") ||
       simplifyString(answer) === "go outside" ||
-      simplifyString(answer) === "go main st"
+      simplifyString(answer) === "go main st" ||
+      simplifyString(answer) === "go down" ||
+      simplifyString(answer) === "enter main st"
     ) {
       enterRoom("182 Main St");
       console.log("You head back out onto the street.");
+    } else if (simplifyString(answer) === "go up") {
+      console.log(
+        "You already went up the stairs. There's nothing at the bottom except the way out."
+      );
+      turnTaken = 0;
     } else {
-      console.log("Sorry, I don't know how to " + answer + ".");
+      console.log("Sorry, I don't know how to \"" + answer + '".');
       turnTaken = 0;
     }
   } else if (currentLocation === "Bathroom") {
     if (
       simplifyString(answer) === "enter shower" ||
-      simplifyString(answer) === "go shower"
+      simplifyString(answer) === "go shower" ||
+      simplifyString(answer) === "use shower"
     ) {
       enterRoom("Shower");
       console.log("You hop into the shower.");
@@ -363,17 +423,22 @@ function respond(answer) {
       console.log("You wash your hands. They're nice and clean now.");
     } else if (
       simplifyString(answer).includes("leave") ||
+      simplifyString(answer).includes("exit") ||
       simplifyString(answer) === "go foyer" ||
       simplifyString(answer) === "enter foyer"
     ) {
       enterRoom("Foyer");
       console.log("You leave the bathroom and go back into the foyer.");
     } else {
-      console.log("Sorry, I don't know how to " + answer + ".");
+      console.log("Sorry, I don't know how to \"" + answer + '".');
       turnTaken = 0;
     }
   } else if (currentLocation === "Shower") {
-    if (simplifyString(answer).includes("turn on") && showerStatus === 0) {
+    if (
+      (simplifyString(answer).includes("turn on") ||
+        simplifyString(answer) === "use shower") &&
+      showerStatus === 0
+    ) {
       console.log("You turn on the shower.");
       showerStatus = 1;
       if (currentState === "ON FIRE!!!") {
@@ -400,17 +465,21 @@ function respond(answer) {
       turnTaken = 0;
     } else if (
       simplifyString(answer).includes("leave") ||
+      simplifyString(answer).includes("exit") ||
       simplifyString(answer) === "go bathroom" ||
       simplifyString(answer) === "enter bathroom"
     ) {
       enterRoom("Bathroom");
       console.log("You step back into the bathroom.");
     } else {
-      console.log("Sorry, I don't know how to " + answer + ".");
+      console.log("Sorry, I don't know how to \"" + answer + '".');
       turnTaken = 0;
     }
   } else if (currentLocation === "Mr. Mike's") {
-    if (simplifyString(answer) === "order pizza") {
+    if (
+      simplifyString(answer) === "order pizza" ||
+      simplifyString(answer) === "buy pizza"
+    ) {
       locations[currentLocation].inventory.push("pizza");
       console.log(
         "Mr. Mike himself makes you a pizza and sets it on the counter."
@@ -431,6 +500,7 @@ function respond(answer) {
       turnTaken = 0;
     } else if (
       simplifyString(answer).includes("leave") ||
+      simplifyString(answer).includes("exit") ||
       simplifyString(answer) === "go outside" ||
       simplifyString(answer) === "go main st" ||
       simplifyString(answer) === "enter main st"
@@ -438,22 +508,33 @@ function respond(answer) {
       enterRoom("182 Main St");
       console.log("You walk back out onto Main St.");
     } else {
-      console.log("Sorry, I don't know how to " + answer + ".");
+      console.log("Sorry, I don't know how to \"" + answer + '".');
       turnTaken = 0;
     }
   } else if (currentLocation === "Classroom") {
-    if (simplifyString(answer).includes("sit")) {
+    if (
+      simplifyString(answer).includes("sit") ||
+      simplifyString(answer) === "attend lecture" ||
+      simplifyString(answer) === "attend class"
+    ) {
       if (currentState === "ON FIRE!!!") {
         console.log(
           "If you sit down on this nice chair while you're on fire, you'll ruin the chair. You can't bring yourself to be that person."
         );
         turnTaken = 0;
+      } else if (classTaken === 1) {
+        console.log(
+          "Class already happened. There's not much point in sitting down."
+        );
+        turnTaken = 0;
       } else {
         console.log(hungryMessage);
+        classTaken = 1;
         enterState("Hungry");
       }
     } else if (
       simplifyString(answer).includes("leave") ||
+      simplifyString(answer).includes("exit") ||
       simplifyString(answer) === "go foyer" ||
       simplifyString(answer) === "enter foyer"
     ) {
@@ -462,20 +543,26 @@ function respond(answer) {
     } else if (simplifyString(answer) === "talk to josh") {
       console.log("Josh says 'Hi.'");
     } else {
-      console.log("Sorry, I don't know how to " + answer + ".");
+      console.log("Sorry, I don't know how to \"" + answer + '".');
       turnTaken = 0;
     }
+  } else if (
+    simplifyString(answer) === "go bathroom" ||
+    simplifyString(answer) === "enter bathroom"
+  ) {
+    console.log("The bathroom is outside the classroom, in the foyer.");
+    turnTaken = 0;
   } else {
-    console.log("Sorry, I don't know how to " + answer + ".");
+    console.log("Sorry, I don't know how to \"" + answer + '".');
     turnTaken = 0;
   }
   if (turnTaken === 1 && currentState === "Hungry") {
     hungryTurnsLeft--;
-    if (hungryTurnsLeft > 4) {
+    if (hungryTurnsLeft > 3) {
       console.log("Your stomach grumbles. Pizza is on your mind.");
-    } else if (hungryTurnsLeft > 2) {
+    } else if (hungryTurnsLeft > 0) {
       console.log("Stomach...So empty...Must...Get pizza...");
-    } else if ((hungryTurnsLeft = 0)) {
+    } else if (hungryTurnsLeft === 0) {
       console.log("You couldn't eat the pizza in time...");
       enterState("DEAD!");
     }
