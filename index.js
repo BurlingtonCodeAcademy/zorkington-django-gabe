@@ -294,7 +294,7 @@ function respond(answer) {
       console.log(
         "That would be selfish. How will other students find their way?"
       );
-      let theifStatus = 1;
+      theifStatus = 1;
     } else if (
       simplifyString(answer) === "open door" ||
       simplifyString(answer) === "enter foyer" ||
